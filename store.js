@@ -3,13 +3,25 @@
  Developer: Oleg Bogdanov
  Contacts: olegbogdanov86@gmail.com
  ------------------------------------------
+ https://www.npmjs.com/package/localforage-observable
  */
 
 "use strict";
 
-const LZString = require('../vendor/lz-string.min');
+const LZString = require('lz-string');//require('./vendor/lz-string.min');
+const localforage = require('localforage');//require('./vendor/localforage.min.js');
 
-let storeName = 'email_sender';
+import Rx from "rxjs/Rx";
+const lfObservable  = require(`localforage-observable/dist/localforage-observable.es6`);
+
+lfObservable.extendPrototype(localforage);
+
+localforage.newObservable.factory = function (subscribeFn) {
+    return Rx.Observable.create(subscribeFn);
+};
+
+
+let storeName = 'seasonvar';
 
 class Store{
     constructor(){
@@ -18,9 +30,11 @@ class Store{
         this.signPack = `.packz`;
 
         this.StoreName = storeName;
-        this.size = 5e+8; // 500mb
+        this.size = 10e+8; // 1000mb
 
         this.isCompress = true;
+
+        this.subscribes = {};
 
         this.Init();
     }
@@ -81,8 +95,12 @@ class Store{
         return val;
     }
 
+    _psKey(name){
+        return `cn-${name}`
+    }
+
+
     Init(instanceName = ''){
-        var localforage = require('../vendor/localforage.min.js');//require('localforage/dist/localforage.min.js');
 
         localforage.config({
             name: this.StoreName, // название базы
@@ -92,8 +110,8 @@ class Store{
         // доступные драйвера для подключения к хранилищам
         let drivers = [
             localforage.INDEXEDDB,
-            localforage.WEBSQL,
-            localforage.LOCALSTORAGE
+            localforage.LOCALSTORAGE,
+            localforage.WEBSQL
         ];
 
         localforage.setDriver(drivers);
@@ -162,6 +180,37 @@ class Store{
             this.instance.keys(callback);
         else
             return this.instance.keys();
+    }
+
+
+
+    Publish(channel, data){
+        this.Set(`cn-${this._psKey(channel)}`, data);
+    }
+
+    Subscribe(channel, callback){
+        let key = this.prefix + this._psKey(channel);
+
+        this.subscribes[key] = this.instance.newObservable({
+            key: key,
+            setItem: true,
+            removeItem: true,
+            clear: true
+        });
+
+        this.subscribes[key].subscribe({
+            next(args) {
+                callback(null, args);
+            },
+            error(err) {
+                callback(err, null);
+            }
+        });
+    }
+
+    Unsubscribe(channel){
+        let key = this.prefix + this._psKey(channel);
+        this.subscribes[key].unsubscribe();
     }
 }
 
